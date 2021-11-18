@@ -1,3 +1,19 @@
+/*
+ * Copyright 2021 scalacache
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package scalacache.redis
 
 import org.scalatest.concurrent.{Eventually, IntegrationPatience, ScalaFutures}
@@ -6,12 +22,11 @@ import org.scalatest.{BeforeAndAfter, Inside}
 import scalacache._
 import scalacache.serialization.Codec.DecodingResult
 import scalacache.serialization.binary._
-import scalacache.serialization.{Codec, FailedToDecode}
+import scalacache.serialization.FailedToDecode
 
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.language.postfixOps
 import cats.effect.IO
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -30,14 +45,14 @@ trait RedisCacheSpecBase
   type JClient <: BaseJedisClient
 
   case object AlwaysFailing
-  implicit val alwaysFailingCodec: Codec[AlwaysFailing.type] = new Codec[AlwaysFailing.type] {
+  implicit val alwaysFailingCodec: BinaryCodec[AlwaysFailing.type] = new BinaryCodec[AlwaysFailing.type] {
     override def encode(value: AlwaysFailing.type): Array[Byte] = Array(0)
     override def decode(bytes: Array[Byte]): DecodingResult[AlwaysFailing.type] =
       Left(FailedToDecode(new Exception("Failed to decode")))
   }
 
   def withJedis: ((JPool, JClient) => Unit) => Unit
-  def constructCache[V](pool: JPool)(implicit codec: Codec[V]): CacheAlg[IO, V]
+  def constructCache[V](pool: JPool)(implicit codec: BinaryCodec[V]): Cache[IO, String, V]
   def flushRedis(client: JClient): Unit
 
   def runTestsIfPossible() = {
@@ -114,7 +129,7 @@ trait RedisCacheSpecBase
 
       behavior of "caching with serialization"
 
-      def roundTrip[V](key: String, value: V)(implicit codec: Codec[V]): Future[Option[V]] = {
+      def roundTrip[V](key: String, value: V)(implicit codec: BinaryCodec[V]): Future[Option[V]] = {
         val c = constructCache[V](pool)
         c.put(key)(value, None).flatMap(_ => c.get(key)).unsafeToFuture()
       }

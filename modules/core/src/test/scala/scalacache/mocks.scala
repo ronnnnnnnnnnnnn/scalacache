@@ -1,15 +1,30 @@
+/*
+ * Copyright 2021 scalacache
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package scalacache
 
+import cats.effect.Sync
 import scalacache.logging.Logger
+import scalacache.memoization.MemoizationConfig
+
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
-import scala.language.higherKinds
-import cats.Applicative
-import cats.effect.Sync
-import cats.MonadError
-import cats.Defer
+import cats.syntax.functor._
 
-class EmptyCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) extends AbstractCache[F, V] {
+class EmptyCache[F[_], V](implicit val F: Sync[F], val config: MemoizationConfig) extends AbstractCache[F, String, V] {
 
   override protected def logger = Logger.getLogger("EmptyCache")
 
@@ -29,7 +44,8 @@ class EmptyCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) exte
 
 }
 
-class FullCache[F[_], V](value: V)(implicit val F: Sync[F], val config: CacheConfig) extends AbstractCache[F, V] {
+class FullCache[F[_], V](value: V)(implicit val F: Sync[F], val config: MemoizationConfig)
+    extends AbstractCache[F, String, V] {
 
   override protected def logger = Logger.getLogger("FullCache")
 
@@ -49,7 +65,8 @@ class FullCache[F[_], V](value: V)(implicit val F: Sync[F], val config: CacheCon
 
 }
 
-class ErrorRaisingCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) extends AbstractCache[F, V] {
+class ErrorRaisingCache[F[_], V](implicit val F: Sync[F], val config: MemoizationConfig)
+    extends AbstractCache[F, String, V] {
 
   override protected val logger = Logger.getLogger("FullCache")
 
@@ -71,7 +88,7 @@ class ErrorRaisingCache[F[_], V](implicit val F: Sync[F], val config: CacheConfi
 
 /** A mock cache for use in tests and samples. Does not support TTL.
   */
-class MockCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) extends AbstractCache[F, V] {
+class MockCache[F[_], V](implicit val F: Sync[F], val config: MemoizationConfig) extends AbstractCache[F, String, V] {
 
   override protected def logger = Logger.getLogger("MockCache")
 
@@ -81,10 +98,10 @@ class MockCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) exten
     F.delay(mmap.get(key))
 
   override protected def doPut(key: String, value: V, ttl: Option[Duration]) =
-    F.delay(mmap.put(key, value))
+    F.delay(mmap.put(key, value)).void
 
   override protected def doRemove(key: String) =
-    F.delay(mmap.remove(key))
+    F.delay(mmap.remove(key)).void
 
   override protected val doRemoveAll =
     F.delay(mmap.clear())
@@ -96,7 +113,7 @@ class MockCache[F[_], V](implicit val F: Sync[F], val config: CacheConfig) exten
 /** A cache that keeps track of the arguments it was called with. Useful for tests. Designed to be mixed in as a
   * stackable trait.
   */
-trait LoggingCache[F[_], V] extends AbstractCache[F, V] {
+trait LoggingCache[F[_], V] extends AbstractCache[F, String, V] {
   val F: Sync[F]
 
   var (getCalledWithArgs, putCalledWithArgs, removeCalledWithArgs) =

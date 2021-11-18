@@ -1,6 +1,8 @@
 inThisBuild(
   List(
+    baseVersion := "1.0",
     organization := "com.github.cb372",
+    organizationName := "scalacache",
     homepage     := Some(url("https://github.com/cb372/scalacache")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
@@ -14,11 +16,12 @@ inThisBuild(
   )
 )
 
-val CatsEffectVersion = "3.2.8"
+val CatsEffectVersion = "3.2.9"
 
 scalafmtOnCompile in ThisBuild := true
 
 lazy val root: Project = Project(id = "scalacache", base = file("."))
+  .enablePlugins(SonatypeCiReleasePlugin)
   .settings(
     commonSettings,
     publishArtifact := false
@@ -42,8 +45,12 @@ lazy val core =
         "org.typelevel" %% "cats-effect" % CatsEffectVersion,
         scalatest,
         scalacheck
-      ) ++ (if (scalaVersion.value.startsWith("2.")) Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value)
-            else Nil),
+      ) ++ (if (scalaVersion.value.startsWith("2.")) {
+        Seq(
+          "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+          "org.scala-lang.modules" %% "scala-collection-compat" % "2.6.0"
+          )
+      } else Nil),
       coverageMinimum       := 60,
       coverageFailOnMinimum := true
     )
@@ -67,7 +74,7 @@ lazy val memcached = createModule("memcached")
 lazy val redis = createModule("redis")
   .settings(
     libraryDependencies ++= Seq(
-      "redis.clients" % "jedis" % "2.10.2"
+      "redis.clients" % "jedis" % "3.7.0"
     ),
     coverageMinimum       := 56,
     coverageFailOnMinimum := true
@@ -76,7 +83,7 @@ lazy val redis = createModule("redis")
 lazy val caffeine = createModule("caffeine")
   .settings(
     libraryDependencies ++= Seq(
-      "com.github.ben-manes.caffeine" % "caffeine"            % "2.9.2",
+      "com.github.ben-manes.caffeine" % "caffeine"            % "3.0.4",
       "org.typelevel"                %% "cats-effect-testkit" % CatsEffectVersion % Test,
       "com.google.code.findbugs"      % "jsr305"              % "3.0.2"           % Provided
     ),
@@ -129,6 +136,7 @@ lazy val docs = createModule("docs")
 lazy val benchmarks = createModule("benchmarks")
   .enablePlugins(JmhPlugin)
   .settings(
+    githubWorkflowArtifactUpload := false,
     publishArtifact        := false,
     fork in (Compile, run) := true,
     javaOptions in Jmh ++= Seq("-server", "-Xms2G", "-Xmx2G", "-XX:+UseG1GC", "-XX:-UseBiasedLocking"),
@@ -145,17 +153,17 @@ lazy val benchmarks = createModule("benchmarks")
   )
   .dependsOn(caffeine)
 
-lazy val scalatest = "org.scalatest" %% "scalatest" % "3.2.9" % Test
+lazy val scalatest = "org.scalatest" %% "scalatest" % "3.2.10" % Test
 
-lazy val scalacheck = "org.scalacheck" %% "scalacheck" % "1.15.3" % Test
+lazy val scalacheck = "org.scalacheck" %% "scalacheck" % "1.15.4" % Test
 
-lazy val scalatestplus = "org.scalatestplus" %% "scalacheck-1-15" % "3.2.9.0" % Test
+lazy val scalatestplus = "org.scalatestplus" %% "scalacheck-1-15" % "3.2.10.0" % Test
 
 lazy val commonSettings =
   mavenSettings ++
     Seq(
       organization := "com.github.cb372",
-      scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-language:higherKinds"),
+      scalacOptions ++= Seq("-language:higherKinds", "-language:postfixOps"),
       parallelExecution in Test := false
     )
 
@@ -166,27 +174,19 @@ lazy val mavenSettings = Seq(
   }
 )
 
-val Scala30  = "3.0.1"
-val Scala213 = "2.13.6"
-val Scala212 = "2.12.14"
+val Scala30  = "3.1.0"
+val Scala213 = "2.13.7"
+val Scala212 = "2.12.15"
 val Jdk11    = "openjdk@1.11.0"
 
 ThisBuild / scalaVersion               := Scala213
 ThisBuild / crossScalaVersions         := Seq(Scala213, Scala212, Scala30)
 ThisBuild / githubWorkflowJavaVersions := Seq(Jdk11)
-ThisBuild / githubWorkflowBuild := Seq(
+ThisBuild / githubWorkflowBuild        := Seq(
   WorkflowStep.Sbt(List("scalafmtCheckAll"), name = Some("Check Formatting")),
   WorkflowStep.Run(List("docker-compose up -d"), name = Some("Setup Dependencies")),
-  WorkflowStep.Sbt(List("test"), name = Some("Run Tests")),
-  WorkflowStep.Sbt(List("docs/mdoc"), name = Some("Compile Docs")),
-  WorkflowStep.Sbt(List("benchmarks/compile"), name = Some("Compile Benchmarks"))
+  WorkflowStep.Sbt(List("ci"), name = Some("Run ci task from sbt-spiewak")),
+  WorkflowStep.Sbt(List("docs/mdoc"), name = Some("Compile Docs"))
 )
-//sbt-ci-release settings
-ThisBuild / githubWorkflowTargetTags ++= Seq("v*")
-ThisBuild / githubWorkflowPublishTargetBranches := Seq(RefPredicate.StartsWith(Ref.Tag("v")))
-ThisBuild / githubWorkflowPublishPreamble       := Seq(WorkflowStep.Use(UseRef.Public("olafurpg", "setup-gpg", "v3")))
-ThisBuild / githubWorkflowPublish               := Seq(WorkflowStep.Sbt(List("ci-release")))
-ThisBuild / githubWorkflowEnv ++= List("PGP_PASSPHRASE", "PGP_SECRET", "SONATYPE_PASSWORD", "SONATYPE_USERNAME").map {
-  envKey =>
-    envKey -> s"$${{ secrets.$envKey }}"
-}.toMap
+ThisBuild / spiewakCiReleaseSnapshots := true
+ThisBuild / spiewakMainBranches := Seq("master")

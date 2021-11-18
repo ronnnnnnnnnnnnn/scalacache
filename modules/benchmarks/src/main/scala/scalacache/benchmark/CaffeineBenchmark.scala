@@ -11,14 +11,16 @@ import caffeine._
 import memoization._
 import cats.effect.SyncIO
 import cats.effect.Clock
+import scala.annotation.nowarn
 
 @State(Scope.Thread)
 class CaffeineBenchmark {
 
   implicit val clockSyncIO: Clock[SyncIO] = Clock[SyncIO]
 
-  val underlyingCache                       = Caffeine.newBuilder().build[String, Entry[String]]()
-  implicit val cache: Cache[SyncIO, String] = CaffeineCache[SyncIO, String](underlyingCache)
+  val underlyingCache = Caffeine.newBuilder().build[String, Entry[String]]()
+  implicit val cache: Cache[SyncIO, String, String] =
+    CaffeineCache[SyncIO, String, String](underlyingCache)
 
   val key           = "key"
   val value: String = "value"
@@ -27,6 +29,7 @@ class CaffeineBenchmark {
     cache.get(key).unsafeRunSync()
   }
 
+  @nowarn
   def itemCachedMemoize(key: String): String =
     memoize(None) {
       value

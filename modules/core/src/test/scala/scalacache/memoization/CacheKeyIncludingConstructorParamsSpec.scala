@@ -1,21 +1,36 @@
+/*
+ * Copyright 2021 scalacache
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package scalacache.memoization
 
-import org.scalatest._
-import scalacache._
-import scalacache.memoization.MethodCallToStringConverter._
 import cats.effect.SyncIO
 import org.scalatest.flatspec.AnyFlatSpec
+import scalacache.memoization.MethodCallToStringConverter._
 
 class CacheKeyIncludingConstructorParamsSpec extends AnyFlatSpec with CacheKeySpecCommon { self =>
 
   behavior of "cache key generation for method memoization (when including constructor params in cache key)"
 
-  implicit val config: CacheConfig =
-    CacheConfig(memoization = MemoizationConfig(toStringConverter = includeClassConstructorParams))
+  implicit override lazy val config: MemoizationConfig =
+    MemoizationConfig(toStringConverter = includeClassConstructorParams)
 
   it should "include the enclosing class's constructor params in the cache key" in {
     val instance = new ClassWithConstructorParams[SyncIO](50)
     instance.cache = cache
+    instance.config = config
 
     checkCacheKey("scalacache.memoization.ClassWithConstructorParams(50).foo(42)") {
       instance.foo(42).unsafeRunSync()
@@ -25,6 +40,7 @@ class CacheKeyIncludingConstructorParamsSpec extends AnyFlatSpec with CacheKeySp
   it should "exclude values of constructor params annotated with @cacheKeyExclude" in {
     val instance = new ClassWithExcludedConstructorParam[SyncIO](50, 10)
     instance.cache = cache
+    instance.config = config
 
     checkCacheKey("scalacache.memoization.ClassWithExcludedConstructorParam(50).foo(42)") {
       instance.foo(42).unsafeRunSync()
@@ -57,19 +73,20 @@ class CacheKeyIncludingConstructorParamsSpec extends AnyFlatSpec with CacheKeySp
 
   it should "work for a method inside a class" in {
     // The class's implicit param (the Cache) should be included in the cache key)
-    checkCacheKey(s"scalacache.memoization.AClass()(${cache.toString}).insideClass(1)") {
+    checkCacheKey(s"scalacache.memoization.AClass()(${cache.toString}, ${config.toString}).insideClass(1)") {
       new AClass[SyncIO]().insideClass(1).unsafeRunSync()
     }
   }
 
   it should "work for a method inside a trait" in {
     checkCacheKey("scalacache.memoization.ATrait.insideTrait(1)") {
-      new ATrait[SyncIO] { val cache = self.cache }.insideTrait(1).unsafeRunSync()
+      new ATrait[SyncIO] { val cache = self.cache; val config = self.config }.insideTrait(1).unsafeRunSync()
     }
   }
 
   it should "work for a method inside an object" in {
     AnObject.cache = this.cache
+    AnObject.config = this.config
     checkCacheKey("scalacache.memoization.AnObject.insideObject(1)") {
       AnObject.insideObject(1).unsafeRunSync()
     }
